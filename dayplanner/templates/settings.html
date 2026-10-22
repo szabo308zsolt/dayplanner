@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ "Welcome" if onboarding else "Settings" }} · Day Planner{% endblock %}
+{% block main_class %}medium{% endblock %}
+{% block content %}
+<h1>{{ "Set up your working day" if onboarding else "Settings" }}</h1>
+{% if onboarding %}<p class="muted">You only do this once. You can change any of it later in Settings.</p>{% endif %}
+
+<form method="post" class="stack" id="settings-form">
+  {{ csrf() }}
+  <section class="card">
+    <h2><span class="step">1</span> Working hours</h2>
+    <div class="row">
+      <label>Start <input type="time" name="work_start" value="{{ s.work_start|hm }}" required></label>
+      <label>End <input type="time" name="work_end" value="{{ s.work_end|hm }}" required></label>
+    </div>
+    <fieldset class="days">
+      <legend>Working days</legend>
+      {% for d in weekdays %}
+      <label class="chip"><input type="checkbox" name="work_days" value="{{ loop.index0 }}" {{ "checked" if loop.index0 in work_days }}> {{ d }}</label>
+      {% endfor %}
+    </fieldset>
+    <label>Time zone
+      <input name="timezone" id="timezone" list="tz-list" value="{{ s.timezone }}" data-detect="{{ 1 if onboarding and s.timezone == 'UTC' else 0 }}" required>
+      <datalist id="tz-list">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+    </label>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">2</span> Slot size</h2>
+    <p class="muted">How finely your day is planned and reviewed.</p>
+    <div class="row">
+      {% for c in slot_choices %}
+      <label class="chip"><input type="radio" name="slot_minutes" value="{{ c }}" {{ "checked" if s.slot_minutes == c }}> {{ c }} min</label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">3</span> Fixed breaks</h2>
+    <p class="muted">Time that is blocked every working day, such as lunch. Leave rows empty to skip them.</p>
+    <div id="breaks">
+      {% for b in breaks %}
+      <div class="row break-row">
+        <input name="break_label" value="{{ b.label }}" placeholder="Label" aria-label="Break label">
+        <input type="time" name="break_start" value="{{ b.start_min|hm }}" aria-label="Break start">
+        <input type="time" name="break_end" value="{{ b.end_min|hm }}" aria-label="Break end">
+      </div>
+      {% endfor %}
+      {% for _ in range(2 if breaks else 1) %}
+      <div class="row break-row">
+        <input name="break_label" value="{{ 'Lunch' if not breaks and loop.first and onboarding }}" placeholder="Label" aria-label="Break label">
+        <input type="time" name="break_start" value="{{ '12:00' if not breaks and loop.first and onboarding }}" aria-label="Break start">
+        <input type="time" name="break_end" value="{{ '13:00' if not breaks and loop.first and onboarding }}" aria-label="Break end">
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="link" id="add-break">+ Add another break</button>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">4</span> Break after tasks</h2>
+    <p class="muted">Rest automatically added after you finish a task.</p>
+    <div class="row">
+      {% for c in rest_choices %}
+      <label class="chip"><input type="radio" name="rest_minutes" value="{{ c }}" {{ "checked" if s.rest_minutes == c }}> {{ "None" if c == 0 else c ~ " min" }}</label>
+      {% endfor %}
+    </div>
+    <label class="check"><input type="checkbox" name="rest_long_only" value="1" {{ "checked" if s.rest_min_task }}>
+      Only after tasks of at least
+      <input type="number" name="rest_min_task" min="0" step="15" value="{{ s.rest_min_task or 60 }}" class="short" aria-label="Minimum task length"> minutes</label>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">5</span> Reviewing your day</h2>
+    <p class="muted">When should we ask you what you actually did?</p>
+    <div class="stack tight">
+      {% for key, label in review_choices.items() %}
+      <label class="check"><input type="radio" name="review_prompt" value="{{ key }}" {{ "checked" if s.review_prompt == key }}> {{ label }}</label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <button class="primary">{{ "Start planning" if onboarding else "Save settings" }}</button>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='settings.js') }}"></script>{% endblock %}

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}{{ weekday }} {{ day }} · Day Planner{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="day-head">
+  <a class="nav-arrow" href="{{ url_for('planner.day', day=prev_day) }}" aria-label="Previous day">←</a>
+  <div>
+    <h1>{{ weekday }}, {{ the_day.strftime("%-d %B %Y") }}</h1>
+    <p class="muted">
+      {% if locked %}<span class="pill locked">Plan locked {{ locked_at[11:] }}</span>
+      {% else %}<span class="pill">Draft plan</span>{% endif %}
+      {{ s.work_start|hm }}–{{ s.work_end|hm }} · {{ slot }}-minute slots
+      {% if not is_today %} · <a href="{{ url_for('planner.today') }}">Go to today</a>{% endif %}
+    </p>
+  </div>
+  <a class="nav-arrow" href="{{ url_for('planner.day', day=next_day) }}" aria-label="Next day">→</a>
+</div>
+
+{% if not is_working_day %}<p class="flash info">This isn't one of your working days. You can still plan it.</p>{% endif %}
+<p class="flash prompt" id="review-banner" hidden></p>
+
+<div class="columns">
+  <div class="col-plan">
+
+    <section class="card" id="tasks">
+      <h2>Tasks</h2>
+      <form method="post" action="{{ url_for('planner.add_task', day=day) }}" class="add-task">
+        {{ csrf() }}
+        <input name="name" placeholder="{{ 'What came up?' if locked else 'What needs doing?' }}" required aria-label="Task name">
+        <label class="inline-label">
+          <input type="number" name="duration" min="5" max="1440" step="5" value="{{ slot }}" required class="short" aria-label="Duration in minutes"> min
+        </label>
+        <select name="priority" aria-label="Priority">
+          {% for p in priorities %}<option value="{{ loop.index0 }}" {{ "selected" if loop.index0 == 1 }}>{{ p }}</option>{% endfor %}
+        </select>
+        {% if locked %}
+        <label class="inline-label">at <input type="time" name="start" value="{{ default_start|hm }}" step="{{ slot * 60 }}" required aria-label="Start time"></label>
+        {% endif %}
+        <button class="primary">Add</button>
+      </form>
+      {% if locked %}<p class="muted small">The plan is locked, so new tasks go in the Actual column as unplanned work.</p>
+      {% else %}<p class="muted small">P0 is most important. Durations are rounded up to {{ slot }} minutes.</p>{% endif %}
+
+      {% if tasks %}
+      <ul class="task-list">
+        {% for t in tasks %}
+        <li class="task status-{{ t.status }}{{ ' unplanned' if t.unplanned }}">
+          <span class="prio p{{ t.priority }}">P{{ t.priority }}</span>
+          <span class="task-name">{{ t.name }}</span>
+          <span class="muted">{{ t.duration|dur }}</span>
+          {% if t.unplanned %}<span class="tag">Unplanned{% if t.start_min is not none %} · {{ t.start_min|hm }}{% endif %}</span>
+          {% elif t.status == 'scheduled' %}<span class="tag ok">Scheduled</span>
+          {% elif t.status == 'cannot_do' %}<span class="tag bad">Cannot do{{ " · didn't fit" if t.cannot_reason == 'auto' }}</span>
+          {% elif t.status == 'moved' %}<span class="tag">Moved to <a href="{{ url_for('planner.day', day=t.moved_to) }}">{{ t.moved_to }}</a></span>
+          {% elif locked %}<span class="tag">Not in plan</span>
+          {% endif %}
+          <span class="actions">
+            {% if t.status == 'cannot_do' %}
+              <form method="post" action="{{ url_for('planner.move_task', task_id=t.id) }}">{{ csrf() }}<button>Move to next day</button></form>
+              {% if not locked and t.cannot_reason == 'manual' %}
+              <form method="post" action="{{ url_for('planner.restore_task', task_id=t.id) }}">{{ csrf() }}<button class="link">Undo</button></form>
+              {% endif %}
+            {% elif t.status != 'moved' and not t.unplanned %}
+              <form method="post" action="{{ url_for('planner.mark_cannot', task_id=t.id) }}">{{ csrf() }}<button class="link">Cannot do</button></form>
+            {% endif %}
+            {% if t.unplanned or not locked %}
+              <form method="post" action="{{ url_for('planner.delete_task', task_id=t.id) }}">{{ csrf() }}<button class="link danger" aria-label="Delete {{ t.name }}">Delete</button></form>
+            {% endif %}
+          </span>
+          {% if not locked and not t.unplanned and t.status in ('cannot_do', 'pending') and blocks %}
+          <form method="post" action="{{ url_for('planner.place_task', task_id=t.id) }}" class="place">
+            {{ csrf() }}<span class="muted small">Place it yourself at</span>
+            <input type="time" name="start" step="{{ slot * 60 }}" required aria-label="Start time for {{ t.name }}">
+            <button>Place</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">No tasks yet. Add everything you want to get done today.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" id="meetings">
+      <h2>Meetings</h2>
+      {% if not locked %}
+      <form method="post" action="{{ url_for('planner.add_meeting', day=day) }}" class="add-task">
+        {{ csrf() }}
+        <input name="title" placeholder="Meeting" aria-label="Meeting title">
+        <input type="time" name="start" required aria-label="Meeting start">
+        <span class="muted">to</span>
+        <input type="time" name="end" required aria-label="Meeting end">
+        <button>Add</button>
+      </form>
+      {% endif %}
+      {% if meetings %}
+      <ul class="plain-list">
+        {% for m in meetings %}
+        <li><span class="time">{{ m.start_min|hm }}–{{ m.end_min|hm }}</span> {{ m.title }}
+          {% if not locked %}
+          <form method="post" action="{{ url_for('planner.delete_meeting', meeting_id=m.id) }}" class="inline">{{ csrf() }}<button class="link danger">Delete</button></form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">No meetings{{ "" if locked else " added. Tasks are never scheduled during meetings or breaks" }}.</p>{% endif %}
+    </section>
+
+    {% if not locked %}
+    <section class="card" id="schedule">
+      <h2>Schedule</h2>
+      <div class="row">
+        <form method="post" action="{{ url_for('planner.generate', day=day) }}">{{ csrf() }}
+          <button class="{{ '' if blocks else 'primary' }}" {{ "disabled" if not tasks }}>{{ "Regenerate" if blocks else "Generate schedule" }}</button>
+        </form>
+        {% if blocks %}
+        <form method="post" action="{{ url_for('planner.lock', day=day) }}">{{ csrf() }}
+          <button class="primary">Lock plan</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if blocks %}
+      <p class="muted small">Change times to move or resize, use ↑ ↓ to reorder. Regenerating discards your edits.
+        Locking fixes the plan so you can compare it with what you actually do.</p>
+      <ul class="block-list">
+        {% for b in blocks %}
+        <li class="{{ b.kind }}">
+          <form method="post" action="{{ url_for('planner.edit_block', block_id=b.id) }}" class="block-edit">
+            {{ csrf() }}
+            <input type="time" name="start" value="{{ b.start_min|hm }}" step="{{ slot * 60 }}" aria-label="Start">
+            <input type="time" name="end" value="{{ b.end_min|hm }}" step="{{ slot * 60 }}" aria-label="End">
+            <span class="block-name">
+              {% if b.kind == 'rest' %}<span class="muted">Break</span>
+              {% else %}<span class="prio p{{ b.priority }}">P{{ b.priority }}</span> {{ b.name }}
+                {% if parts_total[b.task_id] > 1 %}<span class="muted small">part {{ part_no[b.id] }}/{{ parts_total[b.task_id] }}</span>{% endif %}
+              {% endif %}
+            </span>
+            <button>Save</button>
+          </form>
+          <span class="actions">
+            {% if b.kind == 'task' %}
+            <form method="post" action="{{ url_for('planner.swap_block', block_id=b.id, direction='up') }}">{{ csrf() }}<button class="icon" aria-label="Move earlier">↑</button></form>
+            <form method="post" action="{{ url_for('planner.swap_block', block_id=b.id, direction='down') }}">{{ csrf() }}<button class="icon" aria-label="Move later">↓</button></form>
+            {% endif %}
+            <form method="post" action="{{ url_for('planner.delete_block', block_id=b.id) }}">{{ csrf() }}<button class="icon" aria-label="Remove from schedule">✕</button></form>
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif tasks %}
+      <p class="muted">Add your meetings, then generate a schedule.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <section class="card col-review" id="review"
+           data-mode="{{ review_prompt if locked else 'off' }}"data-today="{{ 1 if is_today else 0 }}"
+           data-past="{{ 1 if not is_today and slots and slots[0].when == 'past' else 0 }}"
+           data-now="{{ now_min if now_min is not none else '' }}" data-work-end="{{ s.work_end }}">
+    <h2>Plan vs actual</h2>
+    {% if stats.planned %}
+    <p class="summary">
+      <strong>{{ stats.as_planned }}/{{ stats.planned }}</strong> planned slots done as planned
+      {% if stats.unplanned_min %} · <strong>{{ stats.unplanned_min|dur }}</strong> unplanned work{% endif %}
+    </p>
+    {% endif %}
+    <table class="grid">
+      <thead><tr><th class="t">Time</th><th>Plan</th><th>Actual</th></tr></thead>
+      <tbody>
+        {% for x in slots %}
+        <tr id="slot-{{ x.start }}" class="{{ x.when }}" data-start="{{ x.start }}" data-end="{{ x.end }}"
+            data-label="{{ x.start|hm }}–{{ x.end|hm }}" data-reviewed="{{ 1 if x.actual else 0 }}">
+          <td class="t">{{ x.start|hm }}</td>
+          <td class="plan">
+            {% for p in x.plan %}
+            <div class="item {{ p.kind }}{{ ' dropped' if p.dropped }}">
+              {% if p.kind == 'task' %}<span class="prio p{{ p.priority }}">P{{ p.priority }}</span>{% endif %}
+              {{ p.label }}
+            </div>
+            {% else %}<span class="muted">·</span>{% endfor %}
+          </td>
+          <td class="actual">
+            {% for t in x.unplanned %}<div class="item unplanned"><span class="tag">Unplanned</span> {{ t.name }}</div>{% endfor %}
+            {% if x.actual %}
+              <div class="item done">
+                {% if x.actual.kind == 'as_planned' %}✓ Done as planned{% else %}{{ x.actual.note }}{% endif %}
+                <form method="post" action="{{ url_for('planner.record_actual', day=day) }}" class="inline">
+                  {{ csrf() }}<input type="hidden" name="slot_start" value="{{ x.start }}">
+                  <button class="link" name="kind" value="clear">change</button>
+                </form>
+              </div>
+            {% else %}
+              {% set form %}
+              <form method="post" action="{{ url_for('planner.record_actual', day=day) }}" class="actual-form">
+                {{ csrf() }}<input type="hidden" name="slot_start" value="{{ x.start }}">
+                {# First submit button is the one Enter triggers, so the note saves on Enter. #}
+                <button name="kind" value="other" hidden tabindex="-1">Save</button>
+                {% if x.plan %}<button name="kind" value="as_planned">✓ As planned</button>{% endif %}
+                <input name="note" placeholder="{{ 'or what I did instead ↵' if x.plan else 'What I did ↵' }}" aria-label="What you actually did {{ x.start|hm }}">
+              </form>
+              {% endset %}
+              {% if x.when == 'future' %}<details><summary class="muted small">Record</summary>{{ form }}</details>
+              {% else %}{{ form }}{% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small">This is for your own reflection: how much you got done and how focused the day was.</p>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='day.js') }}"></script>{% endblock %}

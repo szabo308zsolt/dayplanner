@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}New password · Day Planner{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<h1>Choose a new password</h1>
+<form method="post" class="stack">
+  {{ csrf() }}
+  <label>New password <input type="password" name="password" required minlength="8" autocomplete="new-password" autofocus></label>
+  <button class="primary">Save password</button>
+</form>
+{% endblock %}

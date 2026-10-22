@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dayplanner",
+      "runtimeExecutable": "/Users/szabozsolt/Documents/time_management/.venv/bin/flask",
+      "runtimeArgs": ["--app", "dayplanner", "run", "--port", "5050"],
+      "port": 5050
+    }
+  ]
+}

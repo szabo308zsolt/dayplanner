@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Log in · Day Planner{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<h1>Log in</h1>
+<form method="post" class="stack">
+  {{ csrf() }}
+  <label>Email <input type="email" name="email" required autocomplete="email" autofocus></label>
+  <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+  <button class="primary">Log in</button>
+</form>
+<p class="muted"><a href="{{ url_for('auth.forgot') }}">Forgot your password?</a> · <a href="{{ url_for('auth.signup') }}">Create an account</a></p>
+{% endblock %}

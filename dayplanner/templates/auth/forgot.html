@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Reset password · Day Planner{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<h1>Reset your password</h1>
+<p class="muted">Enter your email and we'll send you a link to choose a new password.</p>
+<form method="post" class="stack">
+  {{ csrf() }}
+  <label>Email <input type="email" name="email" required autocomplete="email" autofocus></label>
+  <button class="primary">Send reset link</button>
+</form>
+<p class="muted"><a href="{{ url_for('auth.login') }}">Back to log in</a></p>
+{% endblock %}
